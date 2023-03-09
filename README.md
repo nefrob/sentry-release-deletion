@@ -12,11 +12,11 @@ GitHub Action to delete Sentry releases after a set time of inactivity.
     pull_request:
 
   jobs:
-    update-pr-description:
+    delete-sentry-releases:
       runs-on: ubuntu-latest
+      timeout-minutes: 5
+
       steps:
-        - name: Checkout
-          uses: actions/checkout@v3
         - name: Do action
           uses: nefrob/sentry-release-deletion@v1.0.0
           with:
