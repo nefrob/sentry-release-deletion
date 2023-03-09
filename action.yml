@@ -1,0 +1,21 @@
+name: Delete Sentry Releases
+author: nefrob
+description: Delete Sentry releases after a set time of inactivity.
+
+inputs:
+  accessToken:
+    description: Sentry API access token with releases scope.
+    required: true
+  organization: 
+    description: Sentry organization name.
+    required: true
+  inactiveDays:
+    description: Number of days without activity.
+    required: false
+
+runs:
+  using: node16
+  main: dist/index.js
+
+branding:
+  icon: trash-2
