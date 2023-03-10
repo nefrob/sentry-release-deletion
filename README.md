@@ -9,7 +9,9 @@ GitHub Action to delete Sentry releases after a set time of inactivity.
 
   ```yaml
   on:
-    pull_request:
+    workflow_dispatch:
+    schedule:
+      - cron: '0 15 * * 1'
 
   jobs:
     delete-sentry-releases:
