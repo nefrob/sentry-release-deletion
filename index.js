@@ -22,7 +22,7 @@ async function run() {
         );
         console.log(response);
     } catch (error) {
-        console.error("Failed with error:", error);
+        console.error("Failed with error", error);
         return;
     }
 
@@ -40,7 +40,7 @@ async function run() {
         try {
             lastEvent = Date.parse(release.lastEvent || release.dateCreated);
         } catch (error) {
-            console.error("Failed to parse date for release", release);
+            console.error("Failed to parse date for release", release.version);
             continue;
         }
 
@@ -55,9 +55,13 @@ async function run() {
             );
 
             if (deletedResponse.status === 204) {
-                console.log("Successfully delete release", release.version);
+                console.log("Successfully deleted release", release.version);
             } else {
-                console.warn("Failed to delete release", release.version);
+                console.warn(
+                    "Failed to delete release",
+                    release.version,
+                    deletedResponse.status
+                );
             }
         } catch (error) {
             console.error("Failed with error:", error);
