@@ -20,7 +20,7 @@ GitHub Action to delete Sentry releases after a set time of inactivity.
 
       steps:
         - name: Do action
-          uses: nefrob/sentry-release-deletion@v1.0.0
+          uses: nefrob/sentry-release-deletion@1.0.0
           with:
             sentryToken: 'YOUR_SENTRY_API_ACCESS_TOKEN_WITH_RELEASES_SCOPE'
             organization: 'YOUR_SENTRY_ORGANIZATION_NAME'
