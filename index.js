@@ -1,6 +1,7 @@
 const core = require("@actions/core");
 const axios = require("axios");
 const axiosRetry = require("axios-retry");
+const parseLinkHeader = require("parse-link-header");
 
 async function run() {
     const accessToken = core.getInput("accessToken", { required: true });
@@ -13,21 +14,36 @@ async function run() {
         headers: { Authorization: `Bearer ${accessToken}` },
     };
 
+    const getPaginatedReleaseData = async (endpoint) => {
+        let data = [];
+        let nextPage = endpoint;
+
+        while (true) {
+            const response = await axios.get(nextPage, config);
+            if (response.data) {
+                data = [...data, ...response.data];
+            }
+
+            const paginationLinks = parseLinkHeader(response.headers?.link);
+            if (paginationLinks.next?.results === "false") {
+                break;
+            }
+
+            nextPage = paginationLinks.next.url;
+        }
+
+        return data;
+    };
+
     // Get releases
-    let response = null;
+    let data = null;
     try {
-        response = await axios.get(
-            `https://sentry.io/api/0/organizations/${organization}/releases/`,
-            config
+        data = await getPaginatedReleaseData(
+            `https://sentry.io/api/0/organizations/${organization}/releases/`
         );
-        console.log(response);
+        console.log("Found", data.length, "releases");
     } catch (error) {
         console.error("Failed with error", error);
-        return;
-    }
-
-    if (!response.data) {
-        console.error("No release data", response.status);
         return;
     }
 
@@ -35,7 +51,7 @@ async function run() {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - inactiveDays);
 
-    for (const release of response.data) {
+    for (const release of data) {
         let lastEvent = null;
         try {
             lastEvent = Date.parse(release.lastEvent || release.dateCreated);
@@ -64,7 +80,7 @@ async function run() {
                 );
             }
         } catch (error) {
-            console.error("Failed with error:", error);
+            console.error("Failed with error", error);
             continue;
         }
     }

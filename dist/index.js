@@ -3995,6 +3995,86 @@ function populateMaps (extensions, types) {
 
 /***/ }),
 
+/***/ 1940:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var qs = __nccwpck_require__(3477)
+  , url = __nccwpck_require__(7310)
+  , xtend = __nccwpck_require__(1208);
+
+const PARSE_LINK_HEADER_MAXLEN = parseInt(process.env.PARSE_LINK_HEADER_MAXLEN) || 2000;
+const PARSE_LINK_HEADER_THROW_ON_MAXLEN_EXCEEDED = process.env.PARSE_LINK_HEADER_THROW_ON_MAXLEN_EXCEEDED != null
+
+function hasRel(x) {
+  return x && x.rel;
+}
+
+function intoRels (acc, x) {
+  function splitRel (rel) {
+    acc[rel] = xtend(x, { rel: rel });
+  }
+
+  x.rel.split(/\s+/).forEach(splitRel);
+
+  return acc;
+}
+
+function createObjects (acc, p) {
+  // rel="next" => 1: rel 2: next
+  var m = p.match(/\s*(.+)\s*=\s*"?([^"]+)"?/)
+  if (m) acc[m[1]] = m[2];
+  return acc;
+}
+
+function parseLink(link) {
+  try {
+    var m         =  link.match(/<?([^>]*)>(.*)/)
+      , linkUrl   =  m[1]
+      , parts     =  m[2].split(';')
+      , parsedUrl =  url.parse(linkUrl)
+      , qry       =  qs.parse(parsedUrl.query);
+
+    parts.shift();
+
+    var info = parts
+      .reduce(createObjects, {});
+    
+    info = xtend(qry, info);
+    info.url = linkUrl;
+    return info;
+  } catch (e) {
+    return null;
+  }
+}
+
+function checkHeader(linkHeader){
+  if (!linkHeader) return false;
+
+  if (linkHeader.length > PARSE_LINK_HEADER_MAXLEN) {
+    if (PARSE_LINK_HEADER_THROW_ON_MAXLEN_EXCEEDED) {
+      throw new Error('Input string too long, it should be under ' + PARSE_LINK_HEADER_MAXLEN + ' characters.');
+    } else {
+        return false;
+      }
+  }
+  return true;
+}
+
+module.exports = function (linkHeader) {
+  if (!checkHeader(linkHeader)) return null;
+
+  return linkHeader.split(/,\s*</)
+   .map(parseLink)
+   .filter(hasRel)
+   .reduce(intoRels, {});
+};
+
+
+/***/ }),
+
 /***/ 3329:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -5037,6 +5117,32 @@ exports["default"] = _default;
 
 /***/ }),
 
+/***/ 1208:
+/***/ ((module) => {
+
+module.exports = extend
+
+var hasOwnProperty = Object.prototype.hasOwnProperty;
+
+function extend() {
+    var target = {}
+
+    for (var i = 0; i < arguments.length; i++) {
+        var source = arguments[i]
+
+        for (var key in source) {
+            if (hasOwnProperty.call(source, key)) {
+                target[key] = source[key]
+            }
+        }
+    }
+
+    return target
+}
+
+
+/***/ }),
+
 /***/ 9975:
 /***/ ((module) => {
 
@@ -5114,6 +5220,14 @@ module.exports = require("os");
 
 "use strict";
 module.exports = require("path");
+
+/***/ }),
+
+/***/ 3477:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("querystring");
 
 /***/ }),
 
@@ -10224,6 +10338,7 @@ var __webpack_exports__ = {};
 const core = __nccwpck_require__(2186);
 const axios = __nccwpck_require__(8757);
 const axiosRetry = __nccwpck_require__(9179);
+const parseLinkHeader = __nccwpck_require__(1940);
 
 async function run() {
     const accessToken = core.getInput("accessToken", { required: true });
@@ -10236,21 +10351,36 @@ async function run() {
         headers: { Authorization: `Bearer ${accessToken}` },
     };
 
-    // Get releases
-    let response = null;
-    try {
-        response = await axios.get(
-            `https://sentry.io/api/0/organizations/${organization}/releases/`,
-            config
-        );
-        console.log(response);
-    } catch (error) {
-        console.error("Failed with error:", error);
-        return;
-    }
+    const getPaginatedReleaseData = async (endpoint) => {
+        let data = [];
+        let nextPage = endpoint;
 
-    if (!response.data) {
-        console.error("No release data", response.status);
+        while (true) {
+            const response = await axios.get(nextPage, config);
+            if (response.data) {
+                data = [...data, ...response.data];
+            }
+
+            const paginationLinks = parseLinkHeader(response.headers?.link);
+            if (paginationLinks.next?.results === "false") {
+                break;
+            }
+
+            nextPage = paginationLinks.next.url;
+        }
+
+        return data;
+    };
+
+    // Get releases
+    let data = null;
+    try {
+        data = await getPaginatedReleaseData(
+            `https://sentry.io/api/0/organizations/${organization}/releases/`
+        );
+        console.log("Found", data.length, "releases");
+    } catch (error) {
+        console.error("Failed with error", error);
         return;
     }
 
@@ -10258,12 +10388,12 @@ async function run() {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - inactiveDays);
 
-    for (const release of response.data) {
+    for (const release of data) {
         let lastEvent = null;
         try {
             lastEvent = Date.parse(release.lastEvent || release.dateCreated);
         } catch (error) {
-            console.error("Failed to parse date for release", release);
+            console.error("Failed to parse date for release", release.version);
             continue;
         }
 
@@ -10278,12 +10408,16 @@ async function run() {
             );
 
             if (deletedResponse.status === 204) {
-                console.log("Successfully delete release", release.version);
+                console.log("Successfully deleted release", release.version);
             } else {
-                console.warn("Failed to delete release", release.version);
+                console.warn(
+                    "Failed to delete release",
+                    release.version,
+                    deletedResponse.status
+                );
             }
         } catch (error) {
-            console.error("Failed with error:", error);
+            console.error("Failed with error", error);
             continue;
         }
     }
