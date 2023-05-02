@@ -25,7 +25,7 @@ async function run() {
             }
 
             const paginationLinks = parseLinkHeader(response.headers?.link);
-            if (paginationLinks.next?.results === "false") {
+            if (paginationLinks.next?.results !== "true") {
                 break;
             }
 
